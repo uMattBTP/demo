@@ -1,0 +1,90 @@
+name: Security Analysis
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+env:
+  target_URL: 'https://krypt.me' # URL project
+  
+jobs:
+  security-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
+
+      # TruffleHog - Scanning for secrets
+      - name: Run TruffleHog to scan for secrets
+        uses: trufflesecurity/trufflehog@v3.84.1
+        with:
+          extra_args: --json  # JSON format
+        continue-on-error: false # STOP if secret
+
+      # OWASP-DC - Dependency Check (SCA)
+      # ! DEPENDABOT ALTERNATIVELY !
+      - name: Run OWASP Dependency Check
+        uses: docker://owasp/dependency-check:latest
+        with:
+          args: '-s . -f HTML --project "My Project" --out /github/workspace/report' # TO CHANGE '.'
+
+      # KICS - Infrastructure as Code security scanning (IaC)
+      - name: run KICS
+        uses: checkmarx/kics-github-action@v2.1.3
+        with:
+          path: 'terraform,cfn-templates' # TO CHANGE
+          exclude_paths: ''
+          output_path: ./
+
+      # SonarQube - Static code check (SAST)
+      - name: Run SonarQube Scanner
+        run: |
+             sonar-scanner \
+             -Dsonar.projectKey=nom_du_projet \
+             -Dsonar.sources=./ \
+             -Dsonar.host.url=$SONAR_HOST_URL \
+             -Dsonar.login=$SONAR_TOKEN
+
+      # Semgrep - 
+      - name: Install Semgrep
+        run : pip install semgrep
+      - name: Run Semgrep
+        run: semgrep --config=p/security-audit chemin_du_projet/ # TO CHANGE
+        #run: semgrep --config=p/owasp chemin_du_projet/ # TO CHECK
+      
+      # ZAP - Dynamic code check DAST
+      # Nikto
+      # ETC...
+      - name: Run ZAP Full scan
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: $target_URL
+          format: json
+          output: ./zap-report.json
+
+      # Bandit -
+      - name: Install Bandit
+        run: pip install bandit
+      - name: Run Bandit
+        run: bandit -r chemin_du_projet/ -f json -o rapport_bandit.json # TO CHANGE
+        
+        
+      # Upload reports as artifacts
+      - name: Upload all reports
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: security-reports
+          path: |
+            ${{github.workspace}}/reports/dependency-check-report.html
+            ${{github.workspace}}/reports/zap-report.json
+            ${{github.workspace}}/reports/kics-report.json
+            ${{github.workspace}}/reports/trufflehog-output.json
+            
+      - name: Notify on security findings
+        if: failure()  # Only notify if there are issues
+        run: |
+          echo "Security vulnerabilities found. Please check the reports."
