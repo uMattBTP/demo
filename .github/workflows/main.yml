@@ -43,7 +43,7 @@ jobs:
       - name: Install Semgrep
         run : pip install semgrep
       - name: Run Semgrep
-        run: semgrep --config=p/security-audit chemin_du_projet/ # TO CHANGE
+        run: semgrep --config=p/security-audit javascript/ # TO CHANGE
         #run: semgrep --config=p/owasp chemin_du_projet/ # TO CHECK
       
       # ZAP - Dynamic code check DAST
@@ -60,7 +60,7 @@ jobs:
       - name: Install Bandit
         run: pip install bandit
       - name: Run Bandit
-        run: bandit -r chemin_du_projet/ -f json -o rapport_bandit.json # TO CHANGE
+        run: bandit -r ruby/ -f json -o rapport_bandit.json # TO CHANGE
         
         
       # Upload reports as artifacts
