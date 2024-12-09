@@ -36,15 +36,6 @@ jobs:
           exclude_paths: ''
           output_path: ./
 
-      # SonarQube - Static code check (SAST)
-      - name: Run SonarQube Scanner
-        run: |
-             sonar-scanner \
-             -Dsonar.projectKey=nom_du_projet \
-             -Dsonar.sources=./ \
-             -Dsonar.host.url=$SONAR_HOST_URL \
-             -Dsonar.login=$SONAR_TOKEN
-
       # Semgrep - 
       - name: Install Semgrep
         run : pip install semgrep
