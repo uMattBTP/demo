@@ -7,8 +7,6 @@ on:
   pull_request:
     branches:
       - main
-env:
-  target_URL: 'https://krypt.me' # URL project
   
 jobs:
   security-analysis:
@@ -52,7 +50,7 @@ jobs:
       - name: Run ZAP Full scan
         uses: zaproxy/action-full-scan@v0.12.0
         with:
-          target: $target_URL
+          target: 'https://krypt.me'
           format: json
           output: ./zap-report.json
 
