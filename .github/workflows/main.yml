@@ -1,4 +1,4 @@
-name: Security Analysis
+name: Static Security Analysis
 
 on:
   push:
@@ -7,72 +7,148 @@ on:
   pull_request:
     branches:
       - main
+env:  
+  RUBY_REPO: true
+  RUBY_PATH: /ruby
   
+  PYTHON_REPO: true
+  PYTHON_PATH: .
+  
+  JS_REPO: false
+  JS_PATH: /path/to/code
+
+  IAC_REPO: false
+  IAC_PATH: 'waf'
+
 jobs:
-  security-analysis:
+  static-analysis:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name : list
-        run : ls
-      
       - name: Checkout Code
         uses: actions/checkout@v4.2.2
+    
+      # SonarQube - Static code analysis (SAST)
+      #- name: Run SonarQube Scanner
+      #  run: |
+      #       sonar-scanner \
+      #       -Dsonar.projectKey=nom_du_projet \
+      #       -Dsonar.sources=./ \
+      #       -Dsonar.host.url=$SONAR_HOST_URL \
+      #       -Dsonar.login=$SONAR_TOKEN
+      #  continue-on-error: true
+      #  id: sonar
+      
+      # Semgrep - Static code analysis (SAST)
+      # add # nosemgrep in line to skip
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Run Semgrep
+        run: |
+          semgrep . --json --json-output=./reports/semgrep-report.json --error --severity ERROR
+        continue-on-error: true
+        id: semgrep
 
+      # Bandit - Security linter Python (SAST)
+      # add # nosec in line to skip
+      - name: Install Bandit 🐍
+        if: env.PYTHON_REPO == 'true'
+        run: pip install bandit
+      - name: Run Bandit 🐍
+        if: env.PYTHON_REPO == 'true'
+        run: |
+          bandit -r ${{ env.PYTHON_PATH }} -ll -f html -o ./reports/bandit-report.html
+        continue-on-error: true
+        id: bandit
+
+      # Brakeman - Security linter Ruby (SAST)
+      - name: Install Brakeman 💎
+        if: env.RUBY_REPO == 'true'
+        run: docker pull presidentbeef/brakeman
+      - name: run Brakeman 💎
+        if: env.RUBY_REPO == 'true'
+        run: |
+          docker run -v ${{ env.RUBY_PATH }}:/code presidentbeef/brakeman -o ./reports/brakeman-report.html
+        continue-on-error: true
+        id: brakeman
+      
+      # Security linter Node.JS (SAST)
+      # add // eslint-disable-line in line to skip
+      - name: Setup NodeJS
+        if: env.JS_REPO == 'true'
+        uses: actions/setup-node@v4
+      - name: Install dependencies
+        if: env.JS_REPO == 'true'
+        run: |
+          npm install
+      - name: Run ESLint ⚙️
+        if: env.JS_REPO == 'true'
+        run: |
+          npx eslint ${{ env.JS_PATH }} --ext .js,.jsx,.ts,.tsx
+        continue-on-error: true
+        id: eslint
+
+      # Gryp - (SBOM)
+      # https://github.com/anchore/grype
+      - name: Run Gryp
+        run: |
+          echo '!! COMING SOON!!'
+        id: gryp
+
+        
+      # Syft - (SBOM)
+      #- name: Run Syft 🦉
+      #  uses: anchore/sbom-action@v0
+      #  with :
+      #    artifact-name: 'sbom'
+      #    output-file: ./reports/
+      #  id: syft
+  
+  # Job 2: Dependency Scanning (SCA)
       # TruffleHog - Scanning for secrets
-      - name: Run TruffleHog to scan for secrets
-        uses: trufflesecurity/trufflehog@v3.84.1
+      - name: Run TruffleHog 🐷🔑
+        uses: trufflesecurity/trufflehog@v3.85.0
         with:
-          extra_args: --json  # JSON format
-        continue-on-error: false # STOP if secret
-
-      # OWASP-DC - Dependency Check (SCA)
-      # ! DEPENDABOT ALTERNATIVELY !
-
+          extra_args: --json --results=verified
+        continue-on-error: true
+        id: trufflehog
+    
+  # Job 3: Infrastructure Security (IaC)
       # KICS - Infrastructure as Code security scanning (IaC)
-      - name: run KICS
+      # # kics ignore-block ignores the block beneath
+      # # kics ignore-line ignores the line beneath
+      - name: Run KICS 🫏
+        if: env.IAC_REPO == 'true'
         uses: checkmarx/kics-github-action@v2.1.3
         with:
-          path: 'terraform,cfn-templates' # TO CHANGE
+          path: ${{ env.KICS_PATH }}
           exclude_paths: ''
-          output_path: ./
-
-      # Semgrep - 
-      - name: Install Semgrep
-        run : pip install semgrep
-      - name: Run Semgrep
-        run: semgrep --config=p/security-audit javascript/ # TO CHANGE
-        #run: semgrep --config=p/owasp chemin_du_projet/ # TO CHECK
+          output_formats: json
+          output_path: ./reports/
+          fail_on: high,medium
+        continue-on-error: true
+        id: kics
+      - name: Rename KICS Results 🔄
+        if: env.IAC_REPO == 'true'
+        run: |
+          mv reports/results.json reports/kics-report.json
       
-      # ZAP - Dynamic code check DAST
-      # Nikto
-      # ETC...
-      - name: Run ZAP Full scan
-        uses: zaproxy/action-full-scan@v0.12.0
-        with:
-          target: 'https://krypt.me'
-          format: json
-          output: ./zap-report.json
-
-      # Bandit -
-      - name: Install Bandit
-        run: pip install bandit
-      - name: Run Bandit
-        run: bandit -r ruby/ -f json -o rapport_bandit.json # TO CHANGE
-        
-        
-      # Upload reports as artifacts
-      - name: Upload all reports
+  # Job 5: Upload Reports
+      # Notify on security findings
+      - name: Notify on security findings 🔔
+        if: failure()
+        run: |
+          echo "Security vulnerabilities found. Please check the reports."
+      # Upload all reports as artifacts
+      - name: Upload all reports 📃
         uses: actions/upload-artifact@v4.4.3
         with:
           name: security-reports
           path: |
-            ${{github.workspace}}/reports/dependency-check-report.html
-            ${{github.workspace}}/reports/zap-report.json
-            ${{github.workspace}}/reports/kics-report.json
-            ${{github.workspace}}/reports/trufflehog-output.json
-            
-      - name: Notify on security findings
-        if: failure()  # Only notify if there are issues
-        run: |
-          echo "Security vulnerabilities found. Please check the reports."
+            ./reports/semgrep-report.json
+            ./reports/bandit-report.html
+            ./reports/brakeman-report.html
+            ./reports/eslint-report.json
+            ./reports/gryp-report.json
+            ./reports/trufflehog-output.json
+            ./reports/kics-report.json
