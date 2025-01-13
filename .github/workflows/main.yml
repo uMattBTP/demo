@@ -107,7 +107,7 @@ jobs:
   # Job 2: Dependency Scanning (SCA)
       # TruffleHog - Scanning for secrets
       - name: Run TruffleHog 🐷🔑
-        uses: trufflesecurity/trufflehog@v3.85.0
+        uses: trufflesecurity/trufflehog@v3.88.2
         with:
           extra_args: --json --results=verified
         continue-on-error: true
